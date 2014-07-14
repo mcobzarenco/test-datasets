@@ -21,7 +21,7 @@ TWITTER_ENV_CREDENTIALS = {
     'access_token_secret': 'TWITTER_ACCESS_TOKEN_SECRET'
 }
 
-SCHEMA = [
+FEATURES = [
     {'name': 'timestamp', 'type': 'real'},
     {'name': 'language', 'type': 'categorical'},
     {'name': 'tweet', 'type': 'text'}
@@ -34,7 +34,7 @@ def create_source(endpoint, token, name):
                'name': name,
                'private': False,
                'frozen': False,
-               'schema': SCHEMA}
+               'features': FEATURES}
     resp = requests.post('http://%s/api/sources/create' % endpoint,
                          data=json.dumps(payload), headers=headers)
     print('[%d]  %s' % (resp.status_code, resp.json()), file=sys.stderr)
