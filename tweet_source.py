@@ -38,10 +38,9 @@ def create_dataset(endpoint, token, name):
                'features': FEATURES}
     resp = requests.post('%s/api/datasets/create' % endpoint,
                          data=json.dumps(payload), headers=headers)
-    print(resp)
-    print('[%d]  %s' % (resp.status_code, resp.json()), file=sys.stderr)
     if resp.status_code != 200:
-        return None
+        print('[%d]  %s' % (resp.status_code, resp.json()), file=sys.stderr)
+        sys.exit(1)
     return resp.json()['dataset_id']
 
 
@@ -68,7 +67,8 @@ if __name__ == '__main__':
 
     dataset_id = None
     if args.new:
-        dataset_id = create_dataset(args.endpoint, args.token, args.dataset)
+        dataset_name = args.dataset.split('/')[-1]
+        dataset_id = create_dataset(args.endpoint, args.token, dataset_name)
     elif '/' in args.dataset:
         response = requests.get(args.endpoint + '/api/resolve/%s' % args.dataset)
         dataset_id = response.json()['dataset']['id']
