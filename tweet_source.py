@@ -11,8 +11,9 @@ from dateutil import parser as date_parser
 import requests
 import twitter
 
+
 BATCH_INTERVAL_SECS = 1
-DEFAULT_API_ENDPOINT = 'localhost:8001'
+DEFAULT_API_ENDPOINT = 'http://localhost:8001'
 
 TWITTER_ENV_CREDENTIALS = {
     'consumer_key': 'TWITTER_CONSUMER_KEY',
@@ -22,40 +23,40 @@ TWITTER_ENV_CREDENTIALS = {
 }
 
 FEATURES = [
-    {'name': 'timestamp', 'type': 'real'},
+    {'name': 'timestamp', 'type': 'numerical'},
     {'name': 'language', 'type': 'categorical'},
     {'name': 'tweet', 'type': 'text'}
 ]
 
 
-def create_source(endpoint, token, name):
+def create_dataset(endpoint, token, name):
     headers = {'content-type': 'application/json'}
     payload = {'token': token,
                'name': name,
                'private': False,
                'frozen': False,
                'features': FEATURES}
-    resp = requests.post('http://%s/api/sources/create' % endpoint,
+    resp = requests.post('%s/api/datasets/create' % endpoint,
                          data=json.dumps(payload), headers=headers)
+    print(resp)
     print('[%d]  %s' % (resp.status_code, resp.json()), file=sys.stderr)
     if resp.status_code != 200:
         return None
-    return resp.json()['source_id']
+    return resp.json()['dataset_id']
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Pushes tweets to a reinfer.io source.')
+        description='Pushes tweets to a reinfer.io dataset.')
     _arg = parser.add_argument
     _arg('--endpoint', type=str, action='store', metavar='HOST:PORT',
          default=DEFAULT_API_ENDPOINT,
          help='API endpoint (default=%s)' %  DEFAULT_API_ENDPOINT)
     _arg('--new', action='store_true', default=False,
-         help='Create a new source where to push tweets')
+         help='Create the dataset')
     _arg('--token', action='store', required=True, help='API token')
-    _arg('source', type=str, action='store', metavar='source',
-         help='Base64 encoded source id or the source name if '
-         '--new was used')
+    _arg('dataset', type=str, action='store', metavar='dataset',
+         help='Base64 encoded dataset id or username/dataset-name')
     args = parser.parse_args()
 
     credentials = {}
@@ -65,30 +66,37 @@ if __name__ == '__main__':
     api = twitter.Api(**credentials)
     stream_sample = api.GetStreamSample()
 
-    source_id = create_source(args.endpoint, args.token, args.source) \
-                if args.new else args.source
-    if source_id is None:
-        sys.exit(1)
+    dataset_id = None
+    if args.new:
+        dataset_id = create_dataset(args.endpoint, args.token, args.dataset)
+    elif '/' in args.dataset:
+        response = requests.get(args.endpoint + '/api/resolve/%s' % args.dataset)
+        dataset_id = response.json()['dataset']['id']
+    else:
+        dataset_id = args.dataset
+    assert dataset_id is not None
 
     headers = {'content-type': 'application/json'}
     records = []
-    endpoint = 'http://%s/api/sources/put' % args.endpoint
+    endpoint = '%s/api/datasets/put' % args.endpoint
     start = time.time()
     for tweet in stream_sample:
         if 'text' in tweet:
             timestamp = date_parser.parse(tweet['created_at']).strftime('%s')
+            timestamp = int(timestamp) % (24 * 3600)
             records.append([timestamp, tweet['lang'], tweet['text']])
         end = time.time()
         if end - start > BATCH_INTERVAL_SECS and len(records) > 0:
             start = end
             payload = {'token': args.token,
-                       'source_id': source_id,
+                       'dataset_id': dataset_id,
                        'records': records}
             resp = requests.post(
                 endpoint, data=json.dumps(payload), headers=headers)
             if resp.status_code != 200:
+                print(resp.content)
                 print('API responded with: %s' % resp.json())
             else:
-                print('[source_id=%s] Pushed %d tweets' %
-                      (source_id, len(records)))
+                print('[dataset_id=%s] Pushed %d tweets' %
+                      (dataset_id, len(records)))
                 records = []
